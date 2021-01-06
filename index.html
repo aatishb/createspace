@@ -73,6 +73,7 @@
         const canvasElement = document.getElementsByClassName('output_canvas')[0];
         canvasElement.style.position = "absolute";
         canvasElement.style.zIndex = 100; // "send to front"
+        canvasElement.style.transform = 'scale(-1,1)';
 
         const canvasCtx = canvasElement.getContext('2d');
 
