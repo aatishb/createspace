@@ -77,6 +77,8 @@
 
         const canvasCtx = canvasElement.getContext('2d');
 
+        let smoothing = 0.95;
+
         function onResults(results) {
           canvasCtx.save();
           canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
@@ -88,20 +90,20 @@
                              {color: 'rgba(255,20,20,0.5)', lineWidth: 2});
 
 
-              uniforms.u_thumb.value.x = landmarks[4].x;
-              uniforms.u_thumb.value.y = landmarks[4].y;
+              uniforms.u_thumb.value.x = smoothing * uniforms.u_thumb.value.x + (1 - smoothing) * landmarks[4].x;
+              uniforms.u_thumb.value.y = smoothing * uniforms.u_thumb.value.y + (1 - smoothing) * landmarks[4].y;
 
-              uniforms.u_index.value.x = landmarks[8].x;
-              uniforms.u_index.value.y = landmarks[8].y;
+              uniforms.u_index.value.x = smoothing * uniforms.u_index.value.x + (1 - smoothing) * landmarks[8].x;
+              uniforms.u_index.value.y = smoothing * uniforms.u_index.value.y + (1 - smoothing) * landmarks[8].y;
 
-              uniforms.u_middle.value.x = landmarks[12].x;
-              uniforms.u_middle.value.y = landmarks[12].y;
+              uniforms.u_middle.value.x = smoothing * uniforms.u_middle.value.x + (1 - smoothing) * landmarks[12].x;
+              uniforms.u_middle.value.y = smoothing * uniforms.u_middle.value.y + (1 - smoothing) * landmarks[12].y;
 
-              uniforms.u_ring.value.x = landmarks[16].x;
-              uniforms.u_ring.value.y = landmarks[16].y;
+              uniforms.u_ring.value.x = smoothing * uniforms.u_ring.value.x + (1 - smoothing) * landmarks[16].x;
+              uniforms.u_ring.value.y = smoothing * uniforms.u_ring.value.y + (1 - smoothing) * landmarks[16].y;
 
-              uniforms.u_pinky.value.x = landmarks[16].x;
-              uniforms.u_pinky.value.y = landmarks[16].y;
+              uniforms.u_pinky.value.x = smoothing * uniforms.u_pinky.value.x + (1 - smoothing) * landmarks[20].x;
+              uniforms.u_pinky.value.y = smoothing * uniforms.u_pinky.value.y + (1 - smoothing) * landmarks[20].y;
 
               /*
               drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 1});
