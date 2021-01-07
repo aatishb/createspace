@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+  <meta charset="utf-8">
+  <title></title>
+</head>
+
+<body>
+    <div id="container">
+      <video class="input_video"></video>    
+      <canvas class="output_canvas" width="240px" height="180px"></canvas>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <script src="three.js"></script>
+    <script id="vertexShader" type="x-shader/x-vertex">
+        void main() {
+            gl_Position = vec4( position, 1.0 );
+        }
+    </script>
+    <script id="fragmentShader" type="x-shader/x-fragment">
+        uniform vec2 u_resolution;
+        uniform float u_time;
+        //uniform vec2 u_mouse;
+        uniform vec2 u_thumb;
+        uniform vec2 u_index;
+        uniform vec2 u_middle;
+        uniform vec2 u_ring;
+        uniform vec2 u_pinky;
+
+
+        float plot(float y, float x) {
+            return smoothstep(y + 0.005, y, x) - smoothstep(y, y - 0.005, x) ;
+        }
+
+        float potential(float x, float y, float x0, float y0) {
+          return 0.00005 / (0.0005 + (x - x0) * (x - x0) + (y - y0) * (y - y0));
+        }
+
+        void main () {
+            vec2 pos = gl_FragCoord.xy/u_resolution.xy;
+
+            vec2 thumb = vec2(1.0 - u_thumb.x, 1.0 - u_thumb.y);
+            vec2 index = vec2(1.0 - u_index.x, 1.0 - u_index.y);
+            vec2 middle = vec2(1.0 - u_middle.x, 1.0 - u_middle.y);
+            vec2 ring = vec2(1.0 - u_ring.x, 1.0 - u_ring.y);
+            vec2 pinky = vec2(1.0 - u_pinky.x, 1.0 - u_pinky.y);
+
+            float c = 0.0;
+            
+            for (float y = 0.; y < 1.; y += 0.02) {
+                c += plot(pos.y, y + potential(pos.x, y, thumb.x, thumb.y) + potential(pos.x, y, index.x, index.y) + potential(pos.x, y, middle.x, middle.y) + potential(pos.x, y, ring.x, ring.y) + potential(pos.x, y, pinky.x, pinky.y));
+            }
+            
+            gl_FragColor = vec4(c);
+        }
+
+    </script>
+    <script>
+        const videoElement = document.getElementsByClassName('input_video')[0];
+
+        videoElement.style.opacity = 0;
+        videoElement.style.position = "absolute";
+        videoElement.style.zIndex = -100; // "send to back"
+
+        const canvasElement = document.getElementsByClassName('output_canvas')[0];
+        canvasElement.style.position = "absolute";
+        canvasElement.style.zIndex = 100; // "send to front"
+        canvasElement.style.transform = 'scale(-1,1)';
+
+        const canvasCtx = canvasElement.getContext('2d');
+
+        let smoothing = 0.95;
+
+        function onResults(results) {
+          canvasCtx.save();
+          canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+          canvasCtx.drawImage(
+              results.image, 0, 0, canvasElement.width, canvasElement.height);
+          if (results.multiHandLandmarks) {
+            for (const landmarks of results.multiHandLandmarks) {
+              drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS,
+                             {color: 'rgba(255,20,20,0.5)', lineWidth: 2});
+
+
+              uniforms.u_thumb.value.x = smoothing * uniforms.u_thumb.value.x + (1 - smoothing) * landmarks[4].x;
+              uniforms.u_thumb.value.y = smoothing * uniforms.u_thumb.value.y + (1 - smoothing) * landmarks[4].y;
+
+              uniforms.u_index.value.x = smoothing * uniforms.u_index.value.x + (1 - smoothing) * landmarks[8].x;
+              uniforms.u_index.value.y = smoothing * uniforms.u_index.value.y + (1 - smoothing) * landmarks[8].y;
+
+              uniforms.u_middle.value.x = smoothing * uniforms.u_middle.value.x + (1 - smoothing) * landmarks[12].x;
+              uniforms.u_middle.value.y = smoothing * uniforms.u_middle.value.y + (1 - smoothing) * landmarks[12].y;
+
+              uniforms.u_ring.value.x = smoothing * uniforms.u_ring.value.x + (1 - smoothing) * landmarks[16].x;
+              uniforms.u_ring.value.y = smoothing * uniforms.u_ring.value.y + (1 - smoothing) * landmarks[16].y;
+
+              uniforms.u_pinky.value.x = smoothing * uniforms.u_pinky.value.x + (1 - smoothing) * landmarks[20].x;
+              uniforms.u_pinky.value.y = smoothing * uniforms.u_pinky.value.y + (1 - smoothing) * landmarks[20].y;
+
+              /*
+              drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 1});
+              */
+            }
+          }
+          canvasCtx.restore();
+        }
+
+        const hands = new Hands({locateFile: (file) => {
+          return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+        hands.setOptions({
+          maxNumHands: 1,
+          minDetectionConfidence: 0.8,
+          minTrackingConfidence: 0.8
+        });
+        hands.onResults(onResults);
+
+        const webcam = new Camera(videoElement, {
+          onFrame: async () => {
+            await hands.send({image: videoElement});
+          },
+          width: 640,
+          height: 480
+        });
+        webcam.start();
+
+        var container;
+        var camera, scene, renderer;
+        var uniforms;
+
+        init();
+        animate();
+
+        function init() {
+            container = document.getElementById( 'container' );
+
+            camera = new THREE.Camera();
+            camera.position.z = 1;
+
+            scene = new THREE.Scene();
+
+            var geometry = new THREE.PlaneBufferGeometry( 2, 2 );
+
+            uniforms = {
+                u_time: { type: "f", value: 1.0 },
+                u_resolution: { type: "v2", value: new THREE.Vector2() },
+                u_mouse: { type: "v2", value: new THREE.Vector2() },
+                u_thumb: { type: "v2", value: new THREE.Vector2() },
+                u_index: { type: "v2", value: new THREE.Vector2() },
+                u_middle: { type: "v2", value: new THREE.Vector2() },
+                u_ring: { type: "v2", value: new THREE.Vector2() },
+                u_pinky: { type: "v2", value: new THREE.Vector2() },
+
+            };
+
+            var material = new THREE.ShaderMaterial( {
+                uniforms: uniforms,
+                vertexShader: document.getElementById( 'vertexShader' ).textContent,
+                fragmentShader: document.getElementById( 'fragmentShader' ).textContent
+            } );
+
+            var mesh = new THREE.Mesh( geometry, material );
+            scene.add( mesh );
+
+            renderer = new THREE.WebGLRenderer();
+            renderer.setPixelRatio( window.devicePixelRatio );
+
+            container.appendChild( renderer.domElement );
+
+            onWindowResize();
+            window.addEventListener( 'resize', onWindowResize, false );
+
+            document.onmousemove = function(e){
+              uniforms.u_mouse.value.x = e.pageX
+              uniforms.u_mouse.value.y = e.pageY
+            }
+        }
+
+        function onWindowResize( event ) {
+            renderer.setSize( window.innerWidth, window.innerHeight );
+            uniforms.u_resolution.value.x = renderer.domElement.width;
+            uniforms.u_resolution.value.y = renderer.domElement.height;
+        }
+
+        function animate() {
+            requestAnimationFrame( animate );
+            render();
+        }
+
+        function render() {
+            uniforms.u_time.value += 0.05;
+            renderer.render( scene, camera );
+        }
+    </script>
+</body>
+
+</html>
