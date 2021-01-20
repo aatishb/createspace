@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+  <meta charset="utf-8">
+  <title></title>
+</head>
+
+<body>
+    <div id="container">
+      <video class="input_video"></video>    
+      <canvas class="output_canvas" width="240px" height="180px"></canvas>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <script type="text/javascript">javascript:(function(){var script=document.createElement('script');script.onload=function(){var stats=new Stats();stats.domElement.style.cssText='position:fixed;left:0;top:0;z-index:10000';document.body.appendChild(stats.domElement);requestAnimationFrame(function loop(){stats.update();requestAnimationFrame(loop)});};script.src='//rawgit.com/mrdoob/stats.js/master/build/stats.min.js';document.head.appendChild(script);})()
+    </script>
+    
+    <script src="three.js"></script>
+    <script id="vertexShader" type="x-shader/x-vertex">
+        void main() {
+            gl_Position = vec4( position, 1.0 );
+        }
+    </script>
+    <script id="fragmentShader" type="x-shader/x-fragment">
+        uniform vec2 u_resolution;
+        uniform float u_time;
+        //uniform vec2 u_mouse;
+        uniform vec2 u_hand[6];
+        #define PI 3.1415926538
+
+
+       float wave(vec2 p, vec2 o, float angle, float zoom) {
+          return sin(zoom *  ((p.x-o.x) * cos(angle) + (p.y-o.y) * sin(angle)) + PI/2. + 0.5*u_time);
+      }
+
+        void main () {
+          vec2 pos = gl_FragCoord.xy/u_resolution.xy;
+
+          vec2 mean = vec2(0., 0.);
+
+          for (int i=0; i<=5; i++) {
+              mean += u_hand[i];
+          }
+
+          mean = 1.0 - mean/6.;
+
+          float r = sin(0.5 * u_time);
+          float angle = 0.;
+          float zoom = 200. - 200.*distance(u_hand[1],u_hand[5]);
+
+          for(int i=0; i<=5; i++) {
+              if (i == 3) {
+                angle = 0.;
+              } else {
+                angle = -atan(1.0 - u_hand[i].x - mean.x,
+                             1.0 - u_hand[i].y - mean.y);
+
+                r -= wave(pos, mean, angle, zoom);
+              }
+          }
+          
+          r = 1.0 - 10.*r*r;
+          gl_FragColor = vec4(0.5*r, 0.2*r, r, 1.);
+        }
+
+    </script>
+    <script>
+        const videoElement = document.getElementsByClassName('input_video')[0];
+
+        videoElement.style.opacity = 0;
+        videoElement.style.position = "absolute";
+        videoElement.style.zIndex = -100; // "send to back"
+
+        const canvasElement = document.getElementsByClassName('output_canvas')[0];
+        canvasElement.style.position = "absolute";
+        canvasElement.style.zIndex = 100; // "send to front"
+        canvasElement.style.transform = 'scale(-1,1)';
+
+        const canvasCtx = canvasElement.getContext('2d');
+
+        let smoothing = 0.95;
+
+        function onResults(results) {
+          canvasCtx.save();
+          canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+          canvasCtx.drawImage(
+              results.image, 0, 0, canvasElement.width, canvasElement.height);
+          if (results.multiHandLandmarks) {
+            for (const landmarks of results.multiHandLandmarks) {
+              drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS,
+                             {color: 'rgba(255,20,20,0.5)', lineWidth: 2});
+
+              for (let i = 0; i < 6; i++) {
+                uniforms.u_hand.value[i].x = smoothing * uniforms.u_hand.value[i].x + (1 - smoothing) * landmarks[4*i].x;
+                uniforms.u_hand.value[i].y = smoothing * uniforms.u_hand.value[i].y + (1 - smoothing) * landmarks[4*i].y;
+              }
+
+              /*
+              drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 1});
+              */
+            }
+          }
+          canvasCtx.restore();
+        }
+
+        const hands = new Hands({locateFile: (file) => {
+          return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+        hands.setOptions({
+          maxNumHands: 1,
+          minDetectionConfidence: 0.8,
+          minTrackingConfidence: 0.8
+        });
+        hands.onResults(onResults);
+
+        const webcam = new Camera(videoElement, {
+          onFrame: async () => {
+            await hands.send({image: videoElement});
+          },
+          width: 640,
+          height: 480
+        });
+        webcam.start();
+
+        var container;
+        var camera, scene, renderer;
+        var uniforms;
+
+        init();
+        animate();
+
+        function init() {
+            container = document.getElementById( 'container' );
+
+            camera = new THREE.Camera();
+            camera.position.z = 1;
+
+            scene = new THREE.Scene();
+
+            var geometry = new THREE.PlaneBufferGeometry( 2, 2 );
+
+            uniforms = {
+                u_time: { type: "f", value: 1.0 },
+                u_resolution: { type: "v2", value: new THREE.Vector2() },
+                u_mouse: { type: "v2", value: new THREE.Vector2() },
+                u_hand: {
+                  type: "v2v",
+                  value: [
+                    new THREE.Vector2(),
+                    new THREE.Vector2(),
+                    new THREE.Vector2(),
+                    new THREE.Vector2(),
+                    new THREE.Vector2(),
+                    new THREE.Vector2()
+                  ]
+                }
+            };
+
+            var material = new THREE.ShaderMaterial( {
+                uniforms: uniforms,
+                vertexShader: document.getElementById( 'vertexShader' ).textContent,
+                fragmentShader: document.getElementById( 'fragmentShader' ).textContent
+            } );
+
+            var mesh = new THREE.Mesh( geometry, material );
+            scene.add( mesh );
+
+            renderer = new THREE.WebGLRenderer();
+            renderer.setPixelRatio( window.devicePixelRatio );
+
+            container.appendChild( renderer.domElement );
+
+            onWindowResize();
+            window.addEventListener( 'resize', onWindowResize, false );
+
+            document.onmousemove = function(e){
+              uniforms.u_mouse.value.x = e.pageX
+              uniforms.u_mouse.value.y = e.pageY
+            }
+        }
+
+        function onWindowResize( event ) {
+            renderer.setSize( window.innerWidth, window.innerHeight );
+            uniforms.u_resolution.value.x = renderer.domElement.width;
+            uniforms.u_resolution.value.y = renderer.domElement.height;
+        }
+
+        function animate() {
+            requestAnimationFrame( animate );
+            render();
+        }
+
+        function render() {
+            uniforms.u_time.value += 0.05;
+            renderer.render( scene, camera );
+        }
+    </script>
+</body>
+
+</html>

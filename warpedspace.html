@@ -19,7 +19,7 @@
 
     <script type="text/javascript">javascript:(function(){var script=document.createElement('script');script.onload=function(){var stats=new Stats();stats.domElement.style.cssText='position:fixed;left:0;top:0;z-index:10000';document.body.appendChild(stats.domElement);requestAnimationFrame(function loop(){stats.update();requestAnimationFrame(loop)});};script.src='//rawgit.com/mrdoob/stats.js/master/build/stats.min.js';document.head.appendChild(script);})()
     </script>
-    
+
     <script src="three.js"></script>
     <script id="vertexShader" type="x-shader/x-vertex">
         void main() {
@@ -30,30 +30,41 @@
         uniform vec2 u_resolution;
         uniform float u_time;
         //uniform vec2 u_mouse;
-        uniform vec2 u_hand[6];
+        uniform vec2 u_thumb;
+        uniform vec2 u_index;
+        uniform vec2 u_middle;
+        uniform vec2 u_ring;
+        uniform vec2 u_pinky;
 
-
-        float plot(float y, float x) {
-            return smoothstep(y + 0.005, y, x) - smoothstep(y, y - 0.005, x) ;
+        float wave(vec2 p1, vec2 p2) {
+          return sin(200.*length(p1 - p2) - u_time);
         }
 
-        float potential(float x, float y, float x0, float y0) {
-          return exp(-50. * ((x - x0) * (x - x0) + (y - y0) * (y - y0)));
-        }
-
-        void main () {
+        void main() {
             vec2 pos = gl_FragCoord.xy/u_resolution.xy;
 
-            float c = potential(pos.x, pos.y, 1.0 - u_hand[0].x, 1.0 -  u_hand[0].y);
-            float m = potential(pos.x, pos.y, 1.0 - u_hand[1].x, 1.0 -  u_hand[1].y);
-            float y = potential(pos.x, pos.y, 1.0 - u_hand[2].x, 1.0 -  u_hand[2].y);
-            float r = potential(pos.x, pos.y, 1.0 - u_hand[3].x, 1.0 -  u_hand[3].y);
-            float g = potential(pos.x, pos.y, 1.0 - u_hand[4].x, 1.0 -  u_hand[4].y);
-            float b = potential(pos.x, pos.y, 1.0 - u_hand[5].x, 1.0 -  u_hand[5].y);
-            
-            gl_FragColor = vec4(sin(100.*(c+m+y+r+g+b)));
-        }
+            vec2 thumb = vec2(1.0 - u_thumb.x, 1.0 - u_thumb.y);
+            vec2 index = vec2(1.0 - u_index.x, 1.0 - u_index.y);
+            vec2 middle = vec2(1.0 - u_middle.x, 1.0 - u_middle.y);
+            vec2 ring = vec2(1.0 - u_ring.x, 1.0 - u_ring.y);
+            vec2 pinky = vec2(1.0 - u_pinky.x, 1.0 - u_pinky.y);
 
+            //vec2 mouse = u_mouse.xy/u_resolution.xy;
+
+            float c = 0.0;
+            //for (float offset = 0.25; offset <= .75; offset += 0.05) {
+            c += wave(pos, thumb);
+            c += wave(pos, index);
+            c += wave(pos, middle);
+            c += wave(pos, ring);
+            c += wave(pos, pinky);
+            //c += wave(pos, vec2(hand.x, 1.-hand.y));
+            //c += wave(pos, vec2(1.0 - hand.x, hand.y));
+            //c += wave(pos, vec2(1.0 - hand.x, 1.0 - hand.y));
+            //}
+
+            gl_FragColor = vec4(1.0 - c*c);
+        }
     </script>
     <script>
         const videoElement = document.getElementsByClassName('input_video')[0];
@@ -81,10 +92,21 @@
               drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS,
                              {color: 'rgba(255,20,20,0.5)', lineWidth: 2});
 
-              for (let i = 0; i < 6; i++) {
-                uniforms.u_hand.value[i].x = smoothing * uniforms.u_hand.value[i].x + (1 - smoothing) * landmarks[4*i].x;
-                uniforms.u_hand.value[i].y = smoothing * uniforms.u_hand.value[i].y + (1 - smoothing) * landmarks[4*i].y;
-              }
+
+              uniforms.u_thumb.value.x = smoothing * uniforms.u_thumb.value.x + (1 - smoothing) * landmarks[4].x;
+              uniforms.u_thumb.value.y = smoothing * uniforms.u_thumb.value.y + (1 - smoothing) * landmarks[4].y;
+
+              uniforms.u_index.value.x = smoothing * uniforms.u_index.value.x + (1 - smoothing) * landmarks[8].x;
+              uniforms.u_index.value.y = smoothing * uniforms.u_index.value.y + (1 - smoothing) * landmarks[8].y;
+
+              uniforms.u_middle.value.x = smoothing * uniforms.u_middle.value.x + (1 - smoothing) * landmarks[12].x;
+              uniforms.u_middle.value.y = smoothing * uniforms.u_middle.value.y + (1 - smoothing) * landmarks[12].y;
+
+              uniforms.u_ring.value.x = smoothing * uniforms.u_ring.value.x + (1 - smoothing) * landmarks[16].x;
+              uniforms.u_ring.value.y = smoothing * uniforms.u_ring.value.y + (1 - smoothing) * landmarks[16].y;
+
+              uniforms.u_pinky.value.x = smoothing * uniforms.u_pinky.value.x + (1 - smoothing) * landmarks[20].x;
+              uniforms.u_pinky.value.y = smoothing * uniforms.u_pinky.value.y + (1 - smoothing) * landmarks[20].y;
 
               /*
               drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 1});
@@ -134,17 +156,12 @@
                 u_time: { type: "f", value: 1.0 },
                 u_resolution: { type: "v2", value: new THREE.Vector2() },
                 u_mouse: { type: "v2", value: new THREE.Vector2() },
-                u_hand: {
-                  type: "v2v",
-                  value: [
-                    new THREE.Vector2(),
-                    new THREE.Vector2(),
-                    new THREE.Vector2(),
-                    new THREE.Vector2(),
-                    new THREE.Vector2(),
-                    new THREE.Vector2()
-                  ]
-                }
+                u_thumb: { type: "v2", value: new THREE.Vector2() },
+                u_index: { type: "v2", value: new THREE.Vector2() },
+                u_middle: { type: "v2", value: new THREE.Vector2() },
+                u_ring: { type: "v2", value: new THREE.Vector2() },
+                u_pinky: { type: "v2", value: new THREE.Vector2() },
+
             };
 
             var material = new THREE.ShaderMaterial( {
